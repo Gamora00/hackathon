@@ -3,49 +3,67 @@ const util = require('util');
 
 const query = util.promisify(db.query).bind(db);
 
-exports.rightAndRiddle = async (req, res) => {
-    try {
-        // 1️⃣ Get a random correct answer
-        const correctAnswerQuery = await query(`SELECT * FROM game ORDER BY RAND() LIMIT 1`);
-        if (correctAnswerQuery.length === 0) {
-            return res.status(404).json({ error: "No questions found in the database" });
-        }
-        const correctAnswer = correctAnswerQuery[0]; // Store correct answer
-        const correctAnswerID = correctAnswer.id;
+let previousQuestions = []; // Store previously selected questions
+let lastQuestion = null; // Track the last question to prevent consecutive duplicates
 
-        // 2️⃣ Get the maximum ID from the "game" table
+exports.rightAndRiddle = async (req, res) => {
+    const multipleChoice = new Set();
+    let correctQuestion = null;
+
+    try {
+        // Get the maximum ID from the "game" table
         const result = await query(`SELECT MAX(id) AS maxID FROM game`);
         const maxID = result[0].maxID;
 
         if (maxID < 4) {
-            console.log("Not enough questions in the database!");
             return res.status(400).json({ error: "Not enough questions in the database" });
         }
 
-        // 3️⃣ Generate 3 unique random wrong choices (excluding correct answer)
-        const multipleChoice = new Set();
+        // If there are not enough questions left, reset the set
+        if (previousQuestions.length >= maxID) {
+            previousQuestions = []; // Reset the previous questions if all have been shown
+        }
+
+        // Generate random IDs for 3 incorrect choices
         while (multipleChoice.size < 3) {
             const randomID = Math.floor(Math.random() * maxID) + 1;
-            if (randomID !== correctAnswerID) {
-                multipleChoice.add(randomID);
+            multipleChoice.add(randomID);
+        }
+
+        // Fetch the correct question (ensure it's not already in the previousQuestions set)
+        while (!correctQuestion) {
+            const randomID = Math.floor(Math.random() * maxID) + 1;
+            const correctQuestionResult = await query(`SELECT * FROM game WHERE id = ?`, [randomID]);
+            
+            // Ensure it's not the same as the last question
+            if (!previousQuestions.includes(correctQuestionResult[0].id) && correctQuestionResult[0].id !== lastQuestion) {
+                correctQuestion = correctQuestionResult[0]; // Set the correct question
+                previousQuestions.push(correctQuestion.id); // Add it to the previous questions list
+                lastQuestion = correctQuestion.id; // Update the last question
             }
         }
 
-        console.log("Generated wrong choices:", Array.from(multipleChoice));
+        // Add the correct answer's ID to the set of choices
+        multipleChoice.add(correctQuestion.id);
 
-        // 4️⃣ Fetch wrong choices from the database
-        const wrongChoices = await query(`SELECT * FROM game WHERE id IN (?)`, [Array.from(multipleChoice)]);
+        // Fetch the corresponding question choices (ensure we get exactly 4 choices)
+        const choices = await query(`SELECT * FROM game WHERE id IN (?)`, [Array.from(multipleChoice)]);
 
-        // 5️⃣ Combine correct and wrong answers in one array
-        const finalChoices = [...wrongChoices, correctAnswer];
+        // Ensure we get exactly 4 choices
+        if (choices.length !== 4) {
+            return res.status(500).json({ error: "Incorrect number of choices returned" });
+        }
 
-        // 6️⃣ Shuffle the choices for randomness
-        finalChoices.sort(() => Math.random() - 0.5);
+        // Structure the response properly
+        const response = {
+            question: correctQuestion.question,
+            choices: choices.map(q => q.answer), // Map to answers only
+            correctAnswer: correctQuestion.answer // The correct answer
+        };
 
-        console.log(finalChoices);
-        console.log(correctAnswerID);
-        
-        res.json(finalChoices);
+        console.log("Backend Response:", response); // Log the response for debugging
+        res.json(response);
+
     } catch (error) {
         console.error("Error fetching choices:", error);
         res.status(500).json({ error: "Internal Server Error" });
