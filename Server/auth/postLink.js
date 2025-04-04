@@ -8,6 +8,7 @@ const Game = require('../auth/game')
 const mythBuster = require('../auth/mythBuster')
 const AddLesson = require('../auth/addLesson')
 const AddNewsFlash = require('../auth/addnewsFlash')
+const stats = require('../auth/insertStat')
 
 const multer = require("multer")
 const upload = multer();
@@ -20,7 +21,8 @@ router.post('/game', Game.game)
 router.post('/mythBuster', mythBuster.mythBuster)
 router.post('/addLesson',upload.none(), AddLesson.addLesson)
 
-router.post('/AddNewsFlash', AddNewsFlash.addNewsFlash)
 
+router.post('/AddNewsFlash', AddNewsFlash.addNewsFlash)
+router.post('/stats/:id', stats.stats)
 
 module.exports = router

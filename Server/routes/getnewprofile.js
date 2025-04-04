@@ -6,9 +6,18 @@ const query = util.promisify(db.query).bind(db);
 exports.getNews = async (req, res) => {
     try {
         const {id} = req.params
-        const news = await query('SELECT * FROM newflash WHERE id = ? ', [id]);
+        let news = await query('SELECT * FROM newflash WHERE id = ? ', [id]);
+        
+        news = news.map(news => ({
+            ...news,
+            date: new Date(news.date).toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+            })
+        }));
+
         res.json(news); 
-       
         
     } catch (error) {
         console.error("Error fetching news:", error);
